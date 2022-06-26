@@ -3,7 +3,6 @@ import groovy.transform.Field
 // To Do:
 //  2. Ensure every line of code is tracable
 //  4. check fields from winix for known fields vs added fields
-//  6.  separate out key from domain name interface
 
 // ignore the following keys
 // [utcDatetime, utcTimestamp, S07]
@@ -593,7 +592,7 @@ void getWinixStatus() {
 
     log("$prependLogMsg BEGIN", DEBUG)
     
-    Map requestParams = [uri: "https://us.api.winix-iot.com/common/event/sttus/devices/" + device.getDeviceNetworkId()]
+    Map requestParams = [uri: "https://us.api.winix-iot.com/common/event/sttus/devices/${getWinixDeviceID()}"]
     log("$prependLogMsg Winix Status API Request Params: " + requestParams, TRACE)
 
     // without this pause execution, the status does not appear to update
@@ -800,7 +799,7 @@ void sendWinixCommand(String deviceStateName, String deviceStateDesiredValue) {
         winixStatusDesiredValue = DEVICE[deviceStateName].attr.deviceToWinixLookup[deviceStateDesiredValue]
     }
 
-    Map requestParams = [uri: "https://us.api.winix-iot.com/common/control/devices/${device.getDeviceNetworkId()}/A211/$winixStatusKey:$winixStatusDesiredValue"]
+    Map requestParams = [uri: "https://us.api.winix-iot.com/common/control/devices/${getWinixDeviceID()}/A211/$winixStatusKey:$winixStatusDesiredValue"]
     log("$prependLogMsg Winix Control API Request Params: " + requestParams, TRACE)
 
     httpGet(requestParams, {
@@ -830,6 +829,10 @@ void sendWinixCommand(String deviceStateName, String deviceStateDesiredValue) {
     })
 
     log("$prependLogMsg END", DEBUG)
+}
+
+String getWinixDeviceID() {
+    return device.getDeviceNetworkId() + "_" + settings.winixDeviceKey
 }
 
 Exception deviceException(Map winixControlResponse, String winixErrorMessage) {
