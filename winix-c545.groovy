@@ -1,11 +1,11 @@
 import groovy.transform.Field
 
 // To Do:
+//  5. going from off to high, sync state is low.  should be high need to fix that
 //  1. Ensure every line of code is tracable
 //  2. check fields from winix for known fields vs added fields
 //  3. creation date should always be different in poll 
 //  4. reevaluate where pause execution is because in sync, we get a pause where its not needed
-//  5. going from off to high, sync state is low.  should be high need to fix that
 
 // ignore the following keys
 // [utcDatetime, utcTimestamp, S07]
@@ -337,7 +337,7 @@ void poll() {
  *  perform a sync to get the state of the physical device before performing some action
  */
 
-void sync(final boolean doWeSendEvents = true) {
+void sync(boolean doWeSendEvents = true) {
     String prependLogMsg = "sync($doWeSendEvents) --"
     
     log("$prependLogMsg BEGIN", DEBUG)
