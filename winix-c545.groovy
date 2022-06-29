@@ -1,11 +1,19 @@
 import groovy.transform.Field
 
 // To Do:
-//  5. going from off to high, sync state is low.  should be high need to fix that
 //  1. Ensure every line of code is tracable
 //  2. check fields from winix for known fields vs added fields
 //  3. creation date should always be different in poll 
-//  4. reevaluate where pause execution is because in sync, we get a pause where its not needed
+//  5. can on be supported to no sync events
+//  6. can sync be supported to not sync events
+//  6a. validate cache state value reyurn
+//  7. if off, which attributes change, which do not
+//     * airQualityIndicator : good
+//     * airQualityValue : 0
+//     * mode : manual
+//  8. fix plasmawave because its off when device is off snd you can seeminly turn it on
+//  9.  need api contract cases to test functionaslity of what i amsayin
+
 
 // ignore the following keys
 // [utcDatetime, utcTimestamp, S07]
@@ -38,10 +46,6 @@ import groovy.transform.Field
 ]
 
 @Field final static short FILTER_REPLACEMENT_IN_HOURS = 6480
-
-@Field final static short STATUS_DELAY_IN_MS = 500
-
-@Field final static short STATUS_DELAY_IN_MS_MAX = 10000
 
 @Field final static Map DEVICE = [
     switch: [
@@ -245,7 +249,6 @@ metadata {
         input "logging", "enum", title: "Log Level", required: true, defaultValue: INFO, options: LOG_OPTIONS
         input "pollFreq", "enum", title: "Polling Frequency", required: false, options: POLLING_FREQUENCY
         input "filterReplacementInHours", "number", title: "Filter Replacement (hours)", required: true, defaultValue: FILTER_REPLACEMENT_IN_HOURS, range: 0..FILTER_REPLACEMENT_IN_HOURS
-        input "statusDelayInMS", "number", title: "Status Delay (milliseconds)", required: true, defaultValue: STATUS_DELAY_IN_MS, range: 0..STATUS_DELAY_IN_MS_MAX
         input "winixDeviceKey", "password", title: "Winix Device Key", required: true
         input "onIfOff", "bool", title: "Turn Device On if Off", required: true, defaultValue: true
     }
@@ -349,19 +352,18 @@ void sync(boolean doWeSendEvents = true) {
         this."runEvery${settings.pollFreq - ' '}"("sync")
     }
     
+    // 1. get latest status from Winix to see if device state has changed
+    // 2. force a no-op device change to cause a sync of device state to winix
+    // 3. get latest status from Winix to get the changes
+    
     log("$prependLogMsg Syncing device state to Hubitat", INFO)
     
-    String switchState = getCachedStateValue("switch")
+    // test to see if the changes occurs and make changes to reflect state   
+    getWinixStatus()
     
-    if (switchState == "off") {
-        sendWinixCommand("switch", switchState)
-    } else if (switchState == "on") {
-        String airflowState = getCachedStateValue("airflow")
-        
-        sendWinixCommand("airflow", airflowState)
-    } else {
-        // throw exception   
-    }
+    String devicePlasmawaveState = getCachedStateValue("plasmawave")
+    
+    sendWinixCommand("plasmawave", devicePlasmawaveState)
     
     // createdate should always be different if its what we expect
     
@@ -386,9 +388,9 @@ void on() {
     log("$prependLogMsg Turning device on", INFO)
 
     sendWinixCommand("switch", "on")
-    
+    getWinixStatus()
     sendEvents()
-
+    
     log("$prependLogMsg END", DEBUG)
 }
 
@@ -428,13 +430,14 @@ void onIfOff() {
     if (settings.onIfOff) {
         log("$prependLogMsg Preparing to turn the device on if off", TRACE)
         
-        sync(false)
+        // test to see if the changes occurs and make changes to reflect state   
+        getWinixStatus()
 
         String deviceSwitchState = getCachedStateValue("switch")
         log("$prependLogMsg Device Switch State ($deviceSwitchState)", TRACE)
         
         if (deviceSwitchState == "off") {
-            on()
+            sendWinixCommand("switch", "on")
         }
     }
     
@@ -454,8 +457,8 @@ void off() {
 
     log("$prependLogMsg Turning device off", INFO)
 
-    sendWinixCommand("switch", "off")
-    
+    sendWinixCommand("switch", "off") 
+    getWinixStatus()
     sendEvents()
 
     log("$prependLogMsg END", DEBUG)
@@ -477,8 +480,8 @@ void setAirflow(String airflow) {
     log("$prependLogMsg Setting Airflow to $airflow", INFO)
 
     onIfOff() // ensure device is on before sending the command
-    sendWinixCommand("airflow", airflow)
-
+    sendWinixCommand("airflow", airflow) 
+    getWinixStatus()
     sendEvents()
     
     log("$prependLogMsg END", DEBUG)
@@ -532,8 +535,8 @@ void setMode(String mode) {
     log("$prependLogMsg Setting Mode to $mode", INFO)
 
     onIfOff() // ensure device is on before sending the command
-    sendWinixCommand("mode", mode)
-    
+    sendWinixCommand("mode", mode)  
+    getWinixStatus()
     sendEvents()
 
     log("$prependLogMsg END", DEBUG)
@@ -555,7 +558,7 @@ void setPlasmawave(String plasmawave) {
     log("$prependLogMsg Setting Plasmawave to $plasmawave", INFO)
 
     sendWinixCommand("plasmawave", plasmawave)
-    
+    getWinixStatus()
     sendEvents()
 
     log("$prependLogMsg END", DEBUG)
@@ -605,11 +608,7 @@ void getWinixStatus() {
     String prependLogMsg = "getWinixStatus() --"
 
     log("$prependLogMsg BEGIN", DEBUG)
-    
-    // without this pause execution, the status does not appear to update
-    //  status update from Winix is probably eventually consistent and requires a delay to update
-    pauseExecution(settings.statusDelayInMS)
-    
+        
     Map requestParams = [uri: "https://us.api.winix-iot.com/common/event/sttus/devices/${getWinixDeviceID()}"]
     log("$prependLogMsg Winix Status API Request Params: " + requestParams, TRACE)
     
@@ -822,8 +821,7 @@ void sendWinixCommand(String deviceStateName, String deviceStateDesiredValue) {
             } else if (winixControlResponse == WINIX_RESPONSE_NO_DATA) {
                 throw new Exception("$prependLogMsg Winix Response No Data")    
             } else if (winixControlResponse == WINIX_RESPONSE_CONTROL_SUCCESS) {                
-                // test to see if the changes occurs and make changes to reflect state   
-                getWinixStatus()
+                // success
             } else {
                 throw new Exception("$prependLogMsg Winix Control API Response Map: " + winixControlResponse)
             }
@@ -844,7 +842,3 @@ Exception deviceException(Map winixControlResponse, String winixErrorMessage) {
     // winixErrorTimeMS
     // winixErrorDateString
 }
-
-// sendWinixCommand
-// getWinixStatus
-// updateDeviceState
