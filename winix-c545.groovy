@@ -1,8 +1,11 @@
 import groovy.transform.Field
 
 // To Do:
-//  2. Ensure every line of code is tracable
-//  4. check fields from winix for known fields vs added fields
+//  1. Ensure every line of code is tracable
+//  2. check fields from winix for known fields vs added fields
+//  3. creation date should always be different in poll 
+//  4. reevaluate where pause execution is because in sync, we get a pause where its not needed
+//  5. going from off to high, sync state is low.  should be high need to fix that
 
 // ignore the following keys
 // [utcDatetime, utcTimestamp, S07]
@@ -347,9 +350,20 @@ void sync(final boolean doWeSendEvents = true) {
     }
     
     log("$prependLogMsg Syncing device state to Hubitat", INFO)
-
-    // send a dummy command so that the air purifier will sync with the cloud
-    sendWinixCommand("hc", "ping")
+    
+    String switchState = getCachedStateValue("switch")
+    
+    if (switchState == "off") {
+        sendWinixCommand("switch", switchState)
+    } else if (switchState == "on") {
+        String airflowState = getCachedStateValue("airflow")
+        
+        sendWinixCommand("airflow", airflowState)
+    } else {
+        // throw exception   
+    }
+    
+    // createdate should always be different if its what we expect
     
     if (doWeSendEvents) {
         sendEvents()
@@ -592,12 +606,12 @@ void getWinixStatus() {
 
     log("$prependLogMsg BEGIN", DEBUG)
     
-    Map requestParams = [uri: "https://us.api.winix-iot.com/common/event/sttus/devices/${getWinixDeviceID()}"]
-    log("$prependLogMsg Winix Status API Request Params: " + requestParams, TRACE)
-
     // without this pause execution, the status does not appear to update
     //  status update from Winix is probably eventually consistent and requires a delay to update
     pauseExecution(settings.statusDelayInMS)
+    
+    Map requestParams = [uri: "https://us.api.winix-iot.com/common/event/sttus/devices/${getWinixDeviceID()}"]
+    log("$prependLogMsg Winix Status API Request Params: " + requestParams, TRACE)
     
     httpGet(requestParams, {
         resp ->
@@ -786,18 +800,8 @@ void sendWinixCommand(String deviceStateName, String deviceStateDesiredValue) {
 
     log("$prependLogMsg BEGIN", DEBUG)
 
-    String winixStatusKey
-    String winixStatusDesiredValue
-
-    // allow a pass for "hc" or "health check".  this is a dummy call which will force the air purifier to sync its state to the cloud
-    if (deviceStateName == "hc") {
-        winixStatusKey = deviceStateName
-        winixStatusDesiredValue = deviceStateDesiredValue
-    } else {
-        // check deviceStateName
-        winixStatusKey = DEVICE[deviceStateName].attr.winixStatusKey
-        winixStatusDesiredValue = DEVICE[deviceStateName].attr.deviceToWinixLookup[deviceStateDesiredValue]
-    }
+    String winixStatusKey = DEVICE[deviceStateName].attr.winixStatusKey
+    String winixStatusDesiredValue = DEVICE[deviceStateName].attr.deviceToWinixLookup[deviceStateDesiredValue]
 
     Map requestParams = [uri: "https://us.api.winix-iot.com/common/control/devices/${getWinixDeviceID()}/A211/$winixStatusKey:$winixStatusDesiredValue"]
     log("$prependLogMsg Winix Control API Request Params: " + requestParams, TRACE)
@@ -817,7 +821,7 @@ void sendWinixCommand(String deviceStateName, String deviceStateDesiredValue) {
                 throw new Exception("$prependLogMsg Winix Response Device Not Connected")
             } else if (winixControlResponse == WINIX_RESPONSE_NO_DATA) {
                 throw new Exception("$prependLogMsg Winix Response No Data")    
-            } else if (winixControlResponse == WINIX_RESPONSE_CONTROL_SUCCESS) {
+            } else if (winixControlResponse == WINIX_RESPONSE_CONTROL_SUCCESS) {                
                 // test to see if the changes occurs and make changes to reflect state   
                 getWinixStatus()
             } else {
