@@ -359,17 +359,14 @@ void sync(boolean doWeSendEvents = true) {
     // 1. get latest status from Winix to see if device state has changed indepdent of Hubitat
     // 2. force a no-op device change to cause a sync of device state to Winix
     //    "plasmawave" works nicely because it works when device is on or off ...
-    // 3. get latest status from Winix to sync changes to Hubitat
+    // 3. get latest status from Winix
+    // 4. sync changes to Hubitat
     getWinixStatus()
     String devicePlasmawaveState = getCachedStateValue("plasmawave")
     sendWinixCommand("plasmawave", devicePlasmawaveState)
     getWinixStatus()
-    
     // createdate should always be different if its what we expect
-    
-    if (doWeSendEvents) {
-        sendEvents()
-    }
+    sendEvents()
     
     log("$prependLogMsg END", DEBUG)
 }
