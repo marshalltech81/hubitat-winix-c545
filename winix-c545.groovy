@@ -13,6 +13,8 @@ import groovy.transform.Field
 //     * mode : manual
 //  8. fix plasmawave because its off when device is off snd you can seeminly turn it on
 //  9.  need api contract cases to test functionaslity of what i amsayin
+// 10. update state & statevalue
+
 
 
 // ignore the following keys
@@ -351,19 +353,17 @@ void sync(boolean doWeSendEvents = true) {
     if (settings.pollFreq) {
         this."runEvery${settings.pollFreq - ' '}"("sync")
     }
-    
-    // 1. get latest status from Winix to see if device state has changed
-    // 2. force a no-op device change to cause a sync of device state to winix
-    // 3. get latest status from Winix to get the changes
-    
+        
     log("$prependLogMsg Syncing device state to Hubitat", INFO)
     
-    // test to see if the changes occurs and make changes to reflect state   
+    // 1. get latest status from Winix to see if device state has changed indepdent of Hubitat
+    // 2. force a no-op device change to cause a sync of device state to Winix
+    //    "plasmawave" works nicely because it works when device is on or off ...
+    // 3. get latest status from Winix to sync changes to Hubitat
     getWinixStatus()
-    
     String devicePlasmawaveState = getCachedStateValue("plasmawave")
-    
     sendWinixCommand("plasmawave", devicePlasmawaveState)
+    getWinixStatus()
     
     // createdate should always be different if its what we expect
     
